@@ -205,6 +205,33 @@
     .form-scroll::-webkit-scrollbar-track { background: transparent; }
     .form-scroll::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 4px; }
 
+    /* ── Tooltip ── */
+    #tip-box {
+      position: fixed;
+      max-width: 260px;
+      background: #1a2035;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.6;
+      padding: 10px 13px;
+      border-radius: 8px;
+      box-shadow: 0 8px 28px rgba(0,0,0,.55);
+      z-index: 9999;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .15s;
+      white-space: normal;
+    }
+    #tip-box.visible { opacity: 1; }
+    label[data-tip] { cursor: help; }
+    label[data-tip]::after {
+      content: ' ⓘ';
+      font-size: 10px;
+      color: var(--text-muted);
+      opacity: .7;
+    }
+
     .preset-bar {
       display: flex;
       gap: 6px;
@@ -823,7 +850,8 @@
   <!-- ===================================================================
        App Shell
        =================================================================== -->
-  <div id="app">
+  <div id="tip-box"></div>
+<div id="app">
 
     <!-- Left Panel — Form -->
     <div id="form-panel">
@@ -1558,6 +1586,68 @@
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
     }
+
+    /* ------------------------------------------------------------------
+       Tooltips
+       ------------------------------------------------------------------ */
+    const TIPS = {
+      age:                    "Employee age in years (18–65). Younger employees (< 30) leave at nearly 3× the rate of those over 40 — shorter tenure and fewer financial ties make switching easier.",
+      gender:                 "Employee gender. The model audits for fairness: prediction rates are checked across gender groups to flag disparate impact before HR decisions are made.",
+      maritalstatus:          "Marital status. Single employees in this dataset have a ~26% attrition rate vs ~12% for married. Financial stability and social anchoring are likely factors.",
+      education:              "Highest education level: 1=Below College, 2=College, 3=Bachelor's, 4=Master's, 5=Doctorate. Overqualification for a role can increase restlessness.",
+      educationfield:         "Academic discipline studied. The model uses this to detect career-fit mismatches — e.g. a Life Sciences graduate in a Sales role has higher attrition odds.",
+      distancefromhome:       "Miles between home and office. Commutes > 15 miles correlate with higher attrition, especially combined with overtime. Long commutes erode perceived work-life balance.",
+      employeenumber:         "Unique HR employee identifier. Not a predictor — used for record-keeping and audit traceability only.",
+      department:             "Division the employee belongs to. Sales shows the highest attrition (~21%) in this dataset, followed by HR. R&D is most stable.",
+      jobrole:                "Specific job title. Sales Representatives and Lab Technicians have the highest turnover rates. Research Directors and Managers are the most retained.",
+      joblevel:               "Seniority tier: 1=Entry, 2=Mid, 3=Senior, 4=Lead/Principal, 5=Director. Entry-level employees leave most frequently — limited equity, lower pay, and faster external growth opportunities.",
+      businesstravel:         "Frequency of work-related travel. Frequent travelers are ~3× more likely to leave than non-travelers. Travel fatigue, family disruption, and burnout are key drivers.",
+      overtime:               "Whether the employee regularly works overtime hours. This is the single strongest predictor of attrition in this model (SHAP rank #1). Overtime employees are ~3× more likely to leave.",
+      performancerating:      "Manager-assessed performance: 3=Excellent, 4=Outstanding. Note: only 2 rating levels exist in this IBM dataset — most employees are rated Excellent.",
+      jobsatisfaction:        "How satisfied the employee feels about their job duties: 1=Low, 2=Medium, 3=High, 4=Very High. Low satisfaction is a top-5 predictor of attrition.",
+      environmentsatisfaction:"Satisfaction with physical work environment (office space, facilities, culture): 1=Low, 2=Medium, 3=High, 4=Very High. Unhealthy environments drive exits.",
+      relationshipsatisfaction:"Quality of relationships with colleagues and managers: 1=Low, 2=Medium, 3=High, 4=Very High. Poor relationships signal disengagement and social isolation at work.",
+      worklifebalance:        "Self-reported work-life balance: 1=Bad, 2=Good, 3=Better, 4=Best. Employees reporting Bad balance are ~4× more likely to leave than those reporting Best.",
+      jobinvolvement:         "How emotionally engaged the employee is with their role: 1=Low, 2=Medium, 3=High, 4=Very High. Low involvement = 'quiet quitting' risk before formal departure.",
+      stockoptionlevel:       "Equity compensation tier: 0=None, 1=Low, 2=Medium, 3=High. Higher stock options create financial lock-in — employees with options lose unvested shares by leaving.",
+      monthlyincome:          "Monthly gross salary in USD. Low income is a top-3 attrition predictor. Employees earning < $3,000/month leave at ~25% annually vs ~8% for those earning > $10,000.",
+      hourlyrate:             "Base hourly pay rate ($30–$100). Used for hourly compensation calculations. Less predictive than monthly income for salaried employees.",
+      dailyrate:              "Daily compensation rate code ($100–$1,500). An internal HR rate that may include bonus components. Can diverge from annualized monthly income.",
+      monthlyrate:            "Internal HR monthly rate code ($2,000–$27,000). An administrative rate used for payroll processing — not the same as take-home monthly income.",
+      percentsalaryhike:      "Last annual salary increase percentage (11–25%). Raises below 13% signal under-recognition and correlate with attrition, especially in high-performing employees.",
+      trainingtimeslastyear:  "Number of formal training or development sessions attended last year (0–6). Investment in growth signals the company values the employee — zero sessions is a retention risk flag.",
+      totalworkingyears:      "Total years in the workforce across all employers. A proxy for career stage — more experience often means higher pay expectations and market options.",
+      yearsatcompany:         "Years employed at this specific company. Short tenure (< 2 years) is a strong attrition predictor — the 'new employee exit' pattern. Long tenure (> 10 years) indicates high loyalty.",
+      yearsincurrentrole:     "Years spent in the current job title/role. Extended time without role change can signal stagnation and promotion-track frustration.",
+      yearssincelastpromotion:"Years elapsed since the last promotion. Gaps > 4 years are a strong attrition signal, especially for high performers who feel overlooked.",
+      yearswithcurrmanager:   "Years working under the current manager. Very short tenure (< 1 year) suggests recent manager change — a common attrition trigger. Strong managers improve retention.",
+      numcompaniesworked:     "Number of previous employers (0–9). Higher numbers indicate a job-hopping pattern, which is mildly predictive of future attrition. First-job employees (0) also leave at higher rates.",
+    };
+
+    const tipBox = document.getElementById('tip-box');
+
+    document.querySelectorAll('label[for]').forEach(lbl => {
+      const tip = TIPS[lbl.htmlFor];
+      if (tip) lbl.dataset.tip = tip;
+    });
+
+    document.addEventListener('mouseover', e => {
+      const el = e.target.closest('[data-tip]');
+      if (!el) { tipBox.classList.remove('visible'); return; }
+      tipBox.textContent = el.dataset.tip;
+      tipBox.classList.add('visible');
+    });
+    document.addEventListener('mousemove', e => {
+      if (!tipBox.classList.contains('visible')) return;
+      const x = e.clientX + 16, y = e.clientY + 16;
+      const w = tipBox.offsetWidth, h = tipBox.offsetHeight;
+      tipBox.style.left = (x + w > window.innerWidth  ? e.clientX - w - 8 : x) + 'px';
+      tipBox.style.top  = (y + h > window.innerHeight ? e.clientY - h - 8 : y) + 'px';
+    });
+    document.addEventListener('mouseout', e => {
+      if (e.target.closest('[data-tip]') && (!e.relatedTarget || !e.relatedTarget.closest('[data-tip]')))
+        tipBox.classList.remove('visible');
+    });
 
     /* ------------------------------------------------------------------
        Presets & Randomizer
