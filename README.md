@@ -32,11 +32,34 @@ Attrition leads to loss of talent, increased recruitment costs, and lowered prod
 
 ---
 
+## Live Demo
+
+| Low Risk Profile | Medium Risk Profile |
+|:---:|:---:|
+| ![Low Risk](screenshots/Screenshot%202026-05-06%20at%2004.02.40.png) | ![Medium Risk](screenshots/Screenshot%202026-05-06%20at%2004.02.54.png) |
+
+The frontend predicts attrition probability, risk tier (HIGH / MEDIUM / LOW), SHAP feature impact bars, and an LLM-generated plain-English explanation for HR managers. Preset profiles and a randomizer enable instant testing.
+
+**To run locally:**
+```bash
+# Start API (port 8000)
+uvicorn api.main:app --reload
+
+# Serve frontend (port 3000)
+cd frontend && python3 -m http.server 3000
+```
+Then open `http://localhost:3000`.
+
+---
+
 ## Contents
 
-- `Employee_Attrition.ipynb` — Colab notebook: EDA, modeling, SHAP, fairness audit, calibration, serialization
+- `Employee_Attrition.ipynb` — Full notebook: EDA, modeling, SHAP, fairness audit, calibration, MLflow, FT-Transformer, LLM explanations
+- `api/main.py` — FastAPI backend: `/predict` endpoint with SHAP + Ollama LLM explanation
+- `frontend/index.html` — Single-page HR dashboard UI (vanilla JS, no build step)
 - `ML Project Report - Employee Attrition Prediction.pdf` — Full project report
 - `model_artifacts/` — Serialized XGBoost model, scaler, and metadata JSON
+- `screenshots/` — UI screenshots
 - `README.md` — This file
 
 ---
@@ -102,22 +125,31 @@ Reliability diagrams for XGBoost, CatBoost, Random Forest. Isotonic regression c
 
 - **Language:** Python
 - **Core ML:** scikit-learn, XGBoost, CatBoost, imbalanced-learn (SMOTE)
+- **HPO:** Optuna (TPE sampler)
 - **Explainability:** shap
 - **Fairness:** fairlearn
+- **Experiment Tracking:** MLflow
+- **Deep Learning:** PyTorch, rtdl (FT-Transformer)
+- **LLM:** Ollama llama3.2 (local inference)
+- **API:** FastAPI + uvicorn
+- **Frontend:** Vanilla JS / CSS (no framework)
 - **Serialization:** joblib
 - **Visualization:** matplotlib, seaborn
-- **Notebook:** Google Colab
+- **Notebook:** Google Colab / Jupyter
 - **Dataset:** [IBM HR Analytics — Kaggle](https://www.kaggle.com/datasets/pavansubhasht/ibm-hr-analytics-attrition-dataset)
 
 ---
 
-## Future Enhancements (Priority 2)
+## Phase 2 Extensions (completed May 2026)
 
-- **LLM-powered explanations** — Ollama llama3.2 + SHAP values → plain-English HR manager briefings
-- **Optuna hyperparameter optimization** — replace default XGBoost config with 50-trial Optuna study
-- **MLflow experiment tracking** — log all runs, parameters, and artifacts
-- **FT-Transformer** — tabular attention model baseline for research depth
-- **FastAPI deployment** — `/predict` endpoint returning probability + SHAP + LLM explanation
+| Feature | Details |
+|---------|---------|
+| **Optuna HPO** | 50-trial TPE search over XGBoost hyperparameters; best config promoted if AUC improves |
+| **FT-Transformer** | Feature Tokenizer + Transformer baseline — attention over tabular features; CPU-safe on Apple Silicon |
+| **MLflow Tracking** | All model runs logged with params, metrics, and artifacts; sortable experiment table |
+| **LLM Explanations** | Ollama llama3.2 (local) — SHAP-grounded 2-sentence HR briefings per prediction |
+| **FastAPI Deployment** | `POST /predict` — returns probability, risk level, SHAP top-5, LLM explanation |
+| **Frontend Dashboard** | Single-page vanilla JS UI — risk gauge, SHAP bars, preset profiles, field tooltips |
 
 ---
 
