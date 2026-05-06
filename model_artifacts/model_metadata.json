@@ -1,6 +1,6 @@
 {
   "model": "XGBClassifier",
-  "trained_on": "2026-05-04T21:44:53.424807",
+  "trained_on": "2026-05-06T03:31:43.417048",
   "dataset": "IBM HR Analytics (Kaggle)",
   "n_train": 1029,
   "n_features": 136,
@@ -143,9 +143,9 @@
     "yearswithcurrmanager_17"
   ],
   "metrics": {
-    "accuracy": 0.8662131519274376,
-    "roc_auc": 0.7757898743814238,
-    "f1_minority": 0.4485981308411215
+    "accuracy": 0.854875283446712,
+    "roc_auc": 0.7777693186143891,
+    "f1_minority": 0.3469387755102041
   },
   "decision_threshold": 0.5,
   "class_labels": {
