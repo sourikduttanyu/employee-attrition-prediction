@@ -761,6 +761,101 @@
     }
 
     /* =====================================================================
+       Similar Cases (RAG) Card
+       ===================================================================== */
+    .rag-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: var(--shadow-card);
+      grid-column: 1 / -1;
+    }
+
+    .case-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .case-row {
+      display: grid;
+      grid-template-columns: 72px 1fr auto;
+      align-items: center;
+      gap: 14px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+    }
+
+    .case-sim {
+      text-align: center;
+    }
+    .case-sim .sim-pct {
+      font-size: 18px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      line-height: 1;
+    }
+    .case-sim .sim-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .case-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .case-meta .case-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .case-meta .case-detail {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .outcome-badge {
+      padding: 4px 12px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .outcome-badge.LEFT {
+      background: var(--risk-high-glow);
+      border: 1px solid var(--risk-high);
+      color: var(--risk-high);
+    }
+    .outcome-badge.STAYED {
+      background: var(--risk-low-glow);
+      border: 1px solid var(--risk-low);
+      color: var(--risk-low);
+    }
+
+    /* Rebuild button in status bar */
+    #rag-rebuild-btn {
+      margin-left: auto;
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: color var(--transition), border-color var(--transition), background var(--transition);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    #rag-rebuild-btn:hover { color: var(--accent-blue); border-color: var(--accent-blue); background: rgba(59,130,246,.08); }
+    #rag-rebuild-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* =====================================================================
        Error / Toast
        ===================================================================== */
     #toast {
@@ -845,6 +940,7 @@
       <span class="status-metric" id="roc-metric" style="display:none"></span>
       <span class="status-metric" id="model-metric" style="display:none"></span>
     </div>
+    <button id="rag-rebuild-btn" onclick="rebuildRag()" title="Rebuild the ChromaDB RAG index from the IBM HR CSV">⟳ Rebuild RAG Index</button>
   </div>
 
   <!-- ===================================================================
@@ -1281,6 +1377,12 @@
             <div id="llm-body" class="llm-body"></div>
           </div>
 
+          <!-- Similar Cases (RAG) -->
+          <div class="rag-card">
+            <div class="card-title">Similar Historical Employees (RAG)</div>
+            <div id="rag-cases" class="case-list"></div>
+          </div>
+
         </div>
       </div>
 
@@ -1517,6 +1619,40 @@
             AI explanation unavailable (Ollama not running or model not loaded).
           </span>`;
       }
+
+      // RAG similar cases
+      renderSimilarCases(data.similar_cases);
+    }
+
+    /* ------------------------------------------------------------------
+       Render RAG similar cases
+       ------------------------------------------------------------------ */
+    function renderSimilarCases(cases) {
+      const container = document.getElementById('rag-cases');
+      if (!cases || cases.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted);font-size:12px;">No similar cases retrieved — RAG index may still be building.</p>';
+        return;
+      }
+
+      container.innerHTML = cases.map(c => {
+        const simPct = Math.round(c.similarity * 100);
+        const simColor = simPct >= 80 ? 'var(--risk-low)' : simPct >= 60 ? 'var(--risk-medium)' : 'var(--text-secondary)';
+        const income = c.income ? `$${c.income.toLocaleString()}/mo` : '—';
+        const ot = c.overtime === 'Yes' ? 'Overtime' : 'No OT';
+        const yrs = `${c.years_at_company}yr tenure`;
+        return `
+          <div class="case-row">
+            <div class="case-sim">
+              <div class="sim-pct" style="color:${simColor}">${simPct}%</div>
+              <div class="sim-label">match</div>
+            </div>
+            <div class="case-meta">
+              <div class="case-title">${escapeHtml(c.jobrole)} · ${escapeHtml(c.department)}</div>
+              <div class="case-detail">${escapeHtml(c.maritalstatus)} · ${income} · ${ot} · ${yrs}</div>
+            </div>
+            <span class="outcome-badge ${c.outcome}">${c.outcome}</span>
+          </div>`;
+      }).join('');
     }
 
     /* ------------------------------------------------------------------
@@ -1715,6 +1851,26 @@
       maritalstatus:['Divorced','Married','Single'],
       overtime:['No','Yes'],
     };
+
+    /* ------------------------------------------------------------------
+       RAG rebuild
+       ------------------------------------------------------------------ */
+    async function rebuildRag() {
+      const btn = document.getElementById('rag-rebuild-btn');
+      btn.disabled = true;
+      btn.textContent = '⟳ Rebuilding…';
+      try {
+        const res = await fetch(`${API}/rag/rebuild`, { method: 'POST', signal: AbortSignal.timeout(120000) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        showToast(`RAG index rebuilt — ${data.indexed} employees indexed.`);
+      } catch (err) {
+        showToast(`RAG rebuild failed: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '⟳ Rebuild RAG Index';
+      }
+    }
 
     function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
     function rInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
