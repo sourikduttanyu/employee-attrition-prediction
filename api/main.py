@@ -6,6 +6,7 @@ import io
 import json
 import os
 import pathlib
+import threading
 
 import joblib
 import numpy as np
@@ -38,6 +39,17 @@ FEATURE_NAMES: list[str] = metadata["feature_names"]
 METRICS: dict = metadata["metrics"]
 
 explainer = shap.TreeExplainer(model)
+
+# RAG — build index in background on first startup so it doesn't block requests
+from api.rag import get_similar_cases, build_index as _build_rag_index
+
+def _init_rag():
+    import pathlib as _pl
+    store = _pl.Path(__file__).parent.parent / "rag_store"
+    if not store.exists():
+        _build_rag_index()
+
+threading.Thread(target=_init_rag, daemon=True).start()
 
 # ---------------------------------------------------------------------------
 # Categorical and ordinal columns (ordinal treated as get_dummies too)
@@ -112,14 +124,23 @@ def preprocess(emp: EmployeeInput) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # LLM explanation (best-effort)
 # ---------------------------------------------------------------------------
-def _llm_explain(risk_level: str, probability: float, top_factors: list[dict]) -> str | None:
+def _llm_explain(risk_level: str, probability: float, top_factors: list[dict], retrieved_cases: list[dict] | None = None) -> str | None:
     factors_text = "; ".join(
         f"{f['feature']} ({f['direction'].replace('_', ' ')}, shap={f['shap_value']:.3f})"
         for f in top_factors[:3]
     )
+    cases_text = ""
+    if retrieved_cases:
+        parts = []
+        for c in retrieved_cases[:3]:
+            parts.append(
+                f"{c['jobrole']} in {c['department']} (income ${c['income']:,}, "
+                f"overtime={c['overtime']}, {c['years_at_company']}yr) → {c['outcome']}"
+            )
+        cases_text = " Similar historical employees: " + "; ".join(parts) + "."
     prompt = (
         f"An employee has a {risk_level} attrition risk ({probability:.0%} probability). "
-        f"Top contributing factors: {factors_text}. "
+        f"Top contributing factors: {factors_text}.{cases_text} "
         "Write a 2-sentence explanation for an HR manager explaining what this means "
         "and what action to consider. Be concise and practical."
     )
@@ -188,13 +209,15 @@ def predict(emp: EmployeeInput):
         for i in top_indices
     ]
 
-    llm_explanation = _llm_explain(risk_level, proba, shap_explanation)
+    retrieved_cases = get_similar_cases(emp.model_dump(), k=3)
+    llm_explanation = _llm_explain(risk_level, proba, shap_explanation, retrieved_cases)
 
     return {
         "attrition_probability": round(proba, 4),
         "risk_level": risk_level,
         "prediction": prediction,
         "shap_explanation": shap_explanation,
+        "similar_cases": retrieved_cases,
         "llm_explanation": llm_explanation,
     }
 
@@ -274,3 +297,13 @@ async def predict_batch_csv(file: UploadFile = File(...)):
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=attrition_predictions.csv"},
     )
+
+
+@app.post("/rag/rebuild")
+def rag_rebuild():
+    """Rebuild the ChromaDB RAG index from the IBM HR CSV."""
+    try:
+        n = _build_rag_index()
+        return {"status": "ok", "indexed": n}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"RAG rebuild failed: {e}")
